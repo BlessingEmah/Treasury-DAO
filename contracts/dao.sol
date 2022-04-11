@@ -12,127 +12,140 @@ Investors can transfer shares to each other but they need to have a minimum bala
 Only Investors can create proposals
 Only Investors can vote on a proposal.
 
+The Dao stores the funds and executes the proposals.
+5 ethers = 1 share 
+A proposal has a required number of shares for it to be executed.
+
+
 */
 
-contract DAO {
-
-    struct ProposalInfo{
-        uint id;
-        uint votes; //votes of the proposals
-        uint contributionEndTime;
-        uint amount;
-        address payable proposalAddress;
+contract DAO2 {
+    struct ProposalInfo {
+        uint8 votes; //votes of the proposals
         bool executed;
+        uint48 contributionEndTime;
+        address proposalAuthor;
+        uint256 receivedShares;
+        uint256 requiredShares;
         string name;
+        mapping(address => bool) Voted;
     }
-   
-uint public totalShares;  // total shares in the smart contract
-uint public availableFunds; //in ethers
-uint public contributionEndTime ;
-uint public contributionTime = 5 days;
-uint public nextProposalId;
-uint public voteTime; // //votetime of the proposal
-uint public approvers;// minimum votes required to execute a proposal
-address public admin; //the dao system
 
-mapping(address => bool) public isInvestor;
-mapping(address => uint) public shares;
-mapping(uint => ProposalInfo)  public proposalId;
-mapping(address => mapping(uint => bool) )public votes;
- 
-                                                                                                                                                                                          
-constructor(
-    uint _voteTime,
-    uint _approvers) {
-    require(_approvers > 0 && _approvers < 100,"approver limit");
-    contributionEndTime = block.timestamp + contributionTime;
-    voteTime = _voteTime;
-    approvers = _approvers;
-    admin = msg.sender;
-} 
+    uint32 constant contributionTime = 6 days;
+    uint256 constant multiplier = 1000;
 
-modifier onlyInvestors() {
-    require(isInvestor[msg.sender] ==true, "only investors");
-    _;
+    uint256 public approvers; // minimum votes required to execute a proposal
+    uint24 public voteTime; // //votetime of the proposal
+    address public admin; //the dao system
+    uint256 public totalShares; // total shares in the smart contract
+    uint256 public availableFunds; //ether in the dao system
+    uint256 public proposalId;
+
+    mapping(address => bool) public isInvestor;
+    mapping(address => uint256) public shares;
+    mapping(uint256 => ProposalInfo) public proposals;
+
+    //mapping(address => mapping(uint256 => bool)) public votes;
+
+    constructor() {
+        admin = msg.sender;
+    }
+
+    modifier onlyInvestors() {
+        require(isInvestor[msg.sender] == true, "only investors");
+        _;
+    }
+
+    modifier onlyAdmin() {
+        require(msg.sender == admin, "only admin");
+        _;
+    }
+
+    function getShares() public view returns (uint256) {
+        return (shares[msg.sender]);
+    }
+
+    function getS(address _address) public view returns (uint256) {
+        return (shares[_address]);
+    }
+
+    function contribute() external payable {
+        require(msg.value >= 5 ether, "insufficient balance");
+        uint256 amount = msg.value / 5 ether;
+        uint256 derivedShares = amount * multiplier;
+        isInvestor[msg.sender] = true;
+        shares[msg.sender] = derivedShares;
+        availableFunds += msg.value;   //in the dao
+
+    }
+
+    function transferShare(uint256 amount, address to) external {
+        require(shares[msg.sender] >= amount, "not enough shares");
+        uint256 _amount = amount * multiplier;
+        shares[msg.sender] -= _amount;
+        isInvestor[to] = true;
+        shares[to] += _amount;
+    }
+
+    function createproposalId(string memory name, uint256 requiredShares)
+        external
+        onlyInvestors
+    {
+        ProposalInfo storage p = proposals[proposalId];
+        p.name = name;
+        p.requiredShares = requiredShares;
+        p.proposalAuthor = msg.sender;
+        p.contributionEndTime = uint48(block.timestamp + contributionTime);
+        proposalId++;
+    }
+
+    function vote(uint256 Id) external onlyInvestors {
+        ProposalInfo storage p = proposals[Id];
+        require(
+            block.timestamp > p.contributionEndTime,
+            "voting time has ended"
+        );
+        require(!p.Voted[msg.sender], "Investor has voted");
+        require(
+            p.receivedShares == p.requiredShares,
+            "Proposal shares has been met"
+        );
+        p.votes += 1;
+    }
+
+    function executeProposal(uint256 Id) external onlyAdmin {
+        ProposalInfo storage p = proposals[Id];
+        require(
+            block.timestamp <= p.contributionEndTime,
+            "cannot execute a proposal before end date"
+        );
+        require(
+            p.executed == false,
+            "cannot execute a proposal already executed"
+        );
+        p.executed = true;
+        //require((proposal.votes/ totalShares) * 100 >= approvers, "cannot execute proposal with votes below required approver amount");
+        //transferEther(p.amount, p.proposalAddress);
+    }
+
+    // function withdrawEther(uint256 amount, address payable to)
+    //     external
+    //     onlyAdmin
+    // {
+    //     _transferEther(amount, to);
+    // }
+
+    // function _transferEther(uint256 amount, address payable to) internal {
+    //     require(amount <= availableFunds, "not enough available funds");
+    //     availableFunds -= amount;
+    //     to.transfer(amount);
+    // }
 }
 
-modifier onlyAdmin() {
-    require(msg.sender == admin, "only admin");
-    _;
-}
+    // the contributiontime has not ended.
+    //  check if their shares is greater than the minimum shares.
 
-
-function contribute() external payable {
-    require(block.timestamp < contributionEndTime, "Contribution has ended");
-    isInvestor[msg.sender] = true;
-    shares[msg.sender] += msg.value;
-    totalShares += msg.value;
-    availableFunds += msg.value;
-}
-
-function collectShare(uint amount) external returns(bool){
-    require(shares[msg.sender] >= amount, "not enough shares" );
-    require(availableFunds >= amount, "not enough availablefunds");
-    shares[msg.sender] -= amount;
-    availableFunds -= amount;
-    (bool status, ) =(msg.sender).call{value:amount}(""); 
-    return status;
-}
-
-function transferShare(uint amount, address to) external { 
-     require(shares[msg.sender] >= amount, "not enough shares" );
-    shares[msg.sender] -= amount;
-    isInvestor[to] = true;  
-    shares[to] += amount;
-}
-   
-   
-function createproposalId( string memory name, uint amount, address payable proposalAddress) external onlyInvestors() {
-    require(availableFunds >= amount, "amount too big");
-    proposalId[nextProposalId] = ProposalInfo(
-        nextProposalId,
-        0, // number of votes
-        block.timestamp + voteTime, //enddate of the voting time
-        amount,
-        proposalAddress,
-        false,
-        name
-    );
-    availableFunds -= amount;
-    nextProposalId++; 
-}
-
-function vote(uint Id) external onlyInvestors(){
-    ProposalInfo storage proposal = proposalId[Id];
-    require(votes[msg.sender][Id] == false, "investor can only vote once for a proposal");
-    require(block.timestamp <= proposal.contributionEndTime, "can only vote until proposal end");
-    votes[msg.sender][Id]= true;
-    proposal.votes += shares[msg.sender];
-}
-
-function executeProposal(uint Id) external onlyAdmin() {
-     ProposalInfo storage proposal = proposalId[Id];
-     require(block.timestamp <= proposal.contributionEndTime, "cannot execute a proposal before end date" ); 
-     require(proposal.executed == false, "cannot execute a proposal already executed ");
-     //require((proposal.votes/ totalShares) * 100 >= approvers, "cannot execute proposal with votes below required approver amount");
-    _transferEther(proposal.amount, proposal.proposalAddress);
-    proposal.executed = true;
-}
-
-function withdrawEther(uint amount, address payable to)external onlyAdmin() {
-    _transferEther(amount, to);
-}
-
-
-function _transferEther(uint amount, address payable to) internal  {
-    require(amount <= availableFunds, "not enough available funds");
-    availableFunds -= amount;
-    to.transfer(amount);  
-}
-
-// function viewStruct(uint id) public view returns(ProposalInfo memory){
-//     return proposalId[id];
-// }
-
-
-}
+    // require(
+    //     votes[msg.sender][Id] == false,
+    //     "investor can only vote once for a proposal"
+    // );
