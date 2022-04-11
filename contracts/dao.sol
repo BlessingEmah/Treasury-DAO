@@ -124,28 +124,8 @@ contract DAO2 {
             "cannot execute a proposal already executed"
         );
         p.executed = true;
-        //require((proposal.votes/ totalShares) * 100 >= approvers, "cannot execute proposal with votes below required approver amount");
-        //transferEther(p.amount, p.proposalAddress);
+
     }
 
-    // function withdrawEther(uint256 amount, address payable to)
-    //     external
-    //     onlyAdmin
-    // {
-    //     _transferEther(amount, to);
-    // }
-
-    // function _transferEther(uint256 amount, address payable to) internal {
-    //     require(amount <= availableFunds, "not enough available funds");
-    //     availableFunds -= amount;
-    //     to.transfer(amount);
-    // }
+    
 }
-
-    // the contributiontime has not ended.
-    //  check if their shares is greater than the minimum shares.
-
-    // require(
-    //     votes[msg.sender][Id] == false,
-    //     "investor can only vote once for a proposal"
-    // );
