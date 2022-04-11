@@ -2,13 +2,16 @@
 pragma solidity ^0.8.4;
 
 /* 
+DESIGN ARCHITECTURE
 I built a treasury DAO which does the following:
 
-    Collects investor money(ether)
-    keeps track of investor money with shares(ethers)
-    allow investors to transfer shares
-    allow investment proposals to be created and voted - investor proposal by investor and voted
-    execute successful investment proposals (i.e send money) - send ether to the approved proposals
+For someone to join, they have to contribute to become an Investor.
+Their contribution determines their voting shares.
+Investors can transfer shares to each other but they need to have a minimum balance.
+
+Only Investors can create proposals
+Only Investors can vote on a proposal.
+
 */
 
 contract DAO {
