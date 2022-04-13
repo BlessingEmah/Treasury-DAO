@@ -2,24 +2,23 @@
 pragma solidity ^0.8.4;
 
 /* 
-DESIGN ARCHITECTURE
-I built a treasury DAO which does the following:
+    DESIGN ARCHITECTURE
 
-For someone to join, they have to contribute to become an Investor.
-Their contribution determines their voting shares.
-Investors can transfer shares to each other but they need to have a minimum balance.
+    For someone to join, they have to contribute to become an Investor.
+    Their contribution determines their voting shares.
+    Investors can transfer shares to each other but they need to have a minimum balance.
 
-Only Investors can create proposals
-Only Investors can vote on a proposal.
+    Only Investors can create proposals
+    Only Investors can vote on a proposal.
 
-The Dao stores the funds and executes the proposals.
-5 ethers = 1 share 
-A proposal has a required number of shares for it to be executed.
-
+    The Dao stores the funds and executes the proposals.
+    5 ethers = 1 share 
+    A proposal has a required number of shares for it to be executed.
 
 */
 
 contract DAO2 {
+
     struct ProposalInfo {
         uint8 votes; //votes of the proposals
         bool executed;
@@ -28,18 +27,17 @@ contract DAO2 {
         uint256 receivedShares;
         uint256 requiredShares;
         string name;
-        mapping(address => bool) Voted;
+        mapping(address => bool) voted;
     }
 
-    uint32 constant contributionTime = 6 days;
-    uint256 constant multiplier = 1000;
+    uint32 constant CONTRIBUTION_TIME = 6 days;
+    uint256 constant MULTIPLIER = 1000;
 
-    uint256 public approvers; // minimum votes required to execute a proposal
-    uint24 public voteTime; // //votetime of the proposal
-    address public admin; //the dao system
+    uint256 public immutable approvers; // minimum votes required to execute a proposal
+    address public immutable admin; //the dao system
     uint256 public totalShares; // total shares in the smart contract
     uint256 public availableFunds; //ether in the dao system
-    uint256 public proposalId;
+    uint256 public proposalCount;
 
     mapping(address => bool) public isInvestor;
     mapping(address => uint256) public shares;
@@ -47,12 +45,13 @@ contract DAO2 {
 
     //mapping(address => mapping(uint256 => bool)) public votes;
 
-    constructor() {
+    constructor(uint _approvers) {
         admin = msg.sender;
+        approvers = _approvers;
     }
 
-    modifier onlyInvestors() {
-        require(isInvestor[msg.sender] == true, "only investors");
+    modifier onlyInvestor() {
+        require(isInvestor[msg.sender], "only investors");
         _;
     }
 
@@ -61,71 +60,78 @@ contract DAO2 {
         _;
     }
 
-    function getShares() public view returns (uint256) {
-        return (shares[msg.sender]);
-    }
-
-    function getS(address _address) public view returns (uint256) {
-        return (shares[_address]);
-    }
-
     function contribute() external payable {
         require(msg.value >= 5 ether, "insufficient balance");
         uint256 amount = msg.value / 5 ether;
-        uint256 derivedShares = amount * multiplier;
-        isInvestor[msg.sender] = true;
+        uint256 derivedShares = amount * MULTIPLIER;
         shares[msg.sender] = derivedShares;
-        availableFunds += msg.value;   //in the dao
-
+        totalShares += derivedShares;
+        availableFunds += msg.value;
+        isInvestor[msg.sender] = true; 
     }
 
-    function transferShare(uint256 amount, address to) external {
+    function transferShare(uint256 amount, address to) external onlyInvestor {
+        require(to != address(0), "Address is invalid");
+        require(amount > 0, "amount is invalid");
         require(shares[msg.sender] >= amount, "not enough shares");
-        uint256 _amount = amount * multiplier;
-        shares[msg.sender] -= _amount;
+        shares[msg.sender] -= amount;
         isInvestor[to] = true;
-        shares[to] += _amount;
+        shares[to] += amount;
+        if(shares[msg.sender] == 0){
+            isInvestor[msg.sender] = false;
+        }
     }
 
-    function createproposalId(string memory name, uint256 requiredShares)
+    function createproposalId(string memory _name, uint256 _requiredShares)
         external
-        onlyInvestors
+        onlyInvestor
     {
-        ProposalInfo storage p = proposals[proposalId];
-        p.name = name;
-        p.requiredShares = requiredShares;
-        p.proposalAuthor = msg.sender;
-        p.contributionEndTime = uint48(block.timestamp + contributionTime);
-        proposalId++;
+        proposalCount++;
+        ProposalInfo storage proposal = proposals[proposalCount];
+        proposal.name = _name;
+        proposal.requiredShares = _requiredShares;
+        proposal.proposalAuthor = msg.sender;
+        proposal.contributionEndTime = uint48(block.timestamp + CONTRIBUTION_TIME);
     }
 
-    function vote(uint256 Id) external onlyInvestors {
-        ProposalInfo storage p = proposals[Id];
+    function vote(uint256 _id) external onlyInvestor {
+        ProposalInfo storage proposal = proposals[_id];
         require(
-            block.timestamp > p.contributionEndTime,
+            !proposal.executed,
+            "Proposal has already been executed"
+        );
+        require(
+            !(block.timestamp > proposal.contributionEndTime),
             "voting time has ended"
         );
-        require(!p.Voted[msg.sender], "Investor has voted");
+        require(!proposal.voted[msg.sender], "Investor has already voted");
         require(
-            p.receivedShares == p.requiredShares,
-            "Proposal shares has been met"
+            !(proposal.receivedShares >= proposal.requiredShares),
+            "Proposal shares has already been met"
         );
-        p.votes += 1;
+        proposal.voted[msg.sender] = true;
+        proposal.receivedShares += shares[msg.sender];
+        proposal.votes += 1;
     }
 
-    function executeProposal(uint256 Id) external onlyAdmin {
-        ProposalInfo storage p = proposals[Id];
+    function executeProposal(uint256 _id) external onlyAdmin {
+        ProposalInfo storage proposal = proposals[_id];
         require(
-            block.timestamp <= p.contributionEndTime,
-            "cannot execute a proposal before end date"
+            (block.timestamp <= proposal.contributionEndTime),
+            "Contribution time elapsed"
         );
         require(
-            p.executed == false,
-            "cannot execute a proposal already executed"
+            proposal.votes >= approvers,
+            "Number of approvers invalid"
         );
-        p.executed = true;
-
+        require(
+            !proposal.executed,
+            "Proposal already executed"
+        );
+        require(
+            proposal.receivedShares >= proposal.requiredShares,
+            "Shares threshold not reached"
+        );
+        proposal.executed = true;
     }
-
-    
 }
